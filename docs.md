@@ -260,6 +260,15 @@ if __name__ == "__main__":
     main()
 ```
 
+The run_in_thread method is a context manager (using Python's contextlib.contextmanager) that allows the server to run 
+in a separate thread and ensures it is stopped properly when the context is exited.
+
+A new thread is created and started with `self.run` as the target. This starts the Uvicorn server in a background thread. 
+The code waits for the server to signal that it has started by checking `self.started`. It polls every millisecond (`time.sleep(1e-3)`).
+The `yield` statement marks the point where the caller's code within the `with` block executes.
+On exiting the `with` block the `finally` block sets `self.should_exit = True` to stop the server.
+It then joins the thread, ensuring the server thread has finished cleanly.
+
 the process can now be started with `python3 nebula/physical/start.py`
 
 There was an issue that the configurations for the log_dir and config_dir started with a '/' so we would need permissions

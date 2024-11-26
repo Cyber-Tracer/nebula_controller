@@ -1,5 +1,275 @@
 ## Nebula
 
+### Running on Rasberry Pi
+
+Install Docker and Docker Compose on the controller node so that frontend can be run on it.
+
+Install torch on Raspberry Pi so node can use it.
+
+In root directory `NEBULA` create a python virtual environment called venv so that we can keep our dependencies as
+we want them and not affect whatever is already installed in the system (which in this case should be nothing)
+
+``python3 -m venv venv``
+
+activate the virtual environment. When we use pip to install something, now the stuff gets installed for out app and
+not the entire system
+
+``source venv/bin/activate``
+
+install FastAPI and uvicorn to create a endpoint in start.py to listen for the federated learning process to 
+start:
+
+
+``pip install fastapi``
+
+``pip install uvicorn[standard]``
+
+then run ``pip install --upgrade --force-reinstall -r nebula/requirements.txt`` 
+
+with docker and torchdata==0.8.0 commented out since the torchdata version is incompatible with the python version
+(for some reason) and since docker is not needed.
+
+(instead of:
+
+Then install torch:
+
+``pip install torch``
+
+install numpy:
+
+``pip install numpy``
+
+install cryptography:
+
+``pip install cryptography``
+)
+
+Adjust nebula/requirements.txt -> commented out `torchdata=0.8.0` and `docker=7.1.0`
+
+In scenarios.py in `__init__ needed to add:
+
+``` 
+#ADJUST CONFIG IN PARTICIPANTS CONFIG FILE SO THAT THE CONFIGURATION MATCHES (until now the default
+#has been set
+participant_config["scenario_args"]["deployment"] = self.scenario.deployment
+participant_config["scenario_args"]["controller"] = self.controller
+```
+
+this was necessary since the default configurations were used -> code wrongly assumed that deployment is process instead
+of physical
+
+In `engine.py` I added the following if statement:
+
+``` 
+if config.participant["scenario_args"]["deployment"] != "physical":
+    self.client = docker.from_env()
+```
+
+Added directory `physical` for the nodes with `start.py`:
+
+``` 
+from fastapi import FastAPI, Request
+from fastapi.responses import HTMLResponse
+
+import subprocess
+import json
+import os
+
+
+app = FastAPI()
+
+@app.post("/start") 
+async def start_node(request: Request):
+
+    data = await request.json()
+    file_name = "config.json"
+
+
+    #ADJUST THE LOG DIR AND CONFIG DIR TO RELATIVE PATH INSTEAD OF ABSOLUTE -> CURRENTLY I AM ASSUMING THAT WE START IN THE ROOT
+    #DIRECTORY WHERE NEBULA IS LOCATED -> ATM THIS IS THE DIRECTORY '/Desktop/NEBULA'
+
+    if data["tracking_args"]["log_dir"][0] == "/":
+        data["tracking_args"]["log_dir"] = data["tracking_args"]["log_dir"][1:]
+
+    if data["tracking_args"]["config_dir"][0] == "/":
+        data["tracking_args"]["config_dir"] = data["tracking_args"]["config_dir"][1:]
+
+    
+    #WRITE CONFIG FILE INTO LOCATION SO THAT IT MATCHES THE 'DEFAULT' CONFIGURATION (when it runs with docker)
+
+    directory_path = f'{data["tracking_args"]["config_dir"]}'
+    file_name = f'participant_{data["device_args"]["idx"]}.json'
+
+    try:
+        if not os.path.exists(directory_path): 
+            os.makedirs(directory_path)
+            print(f"Created directory: {directory_path}")
+        
+        # Write the file
+        with open(f'{directory_path}/{file_name}', "w") as config_file:
+            print(f"Writing to file: {directory_path}/{file_name}")
+            json.dump(data, config_file, indent=2)
+            print("JSON file written successfully")
+    except Exception as e:
+        print("Failed to write data to file")
+        print(e)
+        return
+
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    node_path = os.path.join(current_dir, "../node.py")
+    config_path = f'{directory_path}/{file_name}'
+
+    command = ["python3", node_path, config_path]
+    
+    try:
+        subprocess.run(command, capture_output=True, text=True, check=True)
+        print(result.stdout) 
+    except subprocess.CalledProcessError as e:
+        print(f"Command failed with error: {e}")
+```
+
+
+The above code creates an issue later on where the node tries to build a connection with the other nodes. It tries to 
+connect on the (default) port 8000 -> is already taken by uvicorn. So we need to kill/end the process and thus freeing the port.
+Hence I adjusted the code as can be seen in the following:
+
+``` 
+app = FastAPI()
+received_start_event = threading.Event() 
+
+@app.post("/start") 
+async def start_node(request: Request):
+
+    data = await request.json()
+    file_name = "config.json"
+
+
+    #ADJUST THE LOG DIR AND CONFIG DIR TO RELATIVE PATH INSTEAD OF ABSOLUTE -> CURRENTLY I AM ASSUMING THAT WE START IN THE ROOT
+    #DIRECTORY WHERE NEBULA IS LOCATED -> ATM THIS IS THE DIRECTORY '/Desktop/NEBULA'
+
+    if data["tracking_args"]["log_dir"][0] == "/":
+        data["tracking_args"]["log_dir"] = data["tracking_args"]["log_dir"][1:]
+
+    if data["tracking_args"]["config_dir"][0] == "/":
+        data["tracking_args"]["config_dir"] = data["tracking_args"]["config_dir"][1:]
+
+
+    current_directory = os.path.dirname(os.path.abspath(__file__))
+    file_name = "config.json"
+    file_path = f"{current_directory}/{file_name}"
+
+    try:
+        # Write the file
+        with open(file_path, "w") as config_file:
+            json.dump(data, config_file, indent=2)
+            print("JSON file written successfully")
+    except Exception as e:
+        print("Failed to write data to file")
+        print(e)
+        return JSONResponse(content={"error": "Failed to write data"}, status_code=500)
+    return
+
+
+def run_subprocess(directory_path, file_name):
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    node_path = os.path.join(current_dir, "../node.py")
+    config_path = f'{directory_path}/{file_name}'
+    print(current_dir)
+    print(node_path)
+    print(config_path)
+
+    command = ["python3", node_path, config_path]
+    try:
+        print("EXECUTING SUBPROCESS")
+        subprocess.run(command, check=True)
+        print("Subprocess started successfully")
+    except subprocess.CalledProcessError as e:
+        print(f"Command failed with error: {e}")
+
+
+class Server(uvicorn.Server):
+    def install_signal_handler(self):
+        pass
+
+    @contextlib.contextmanager
+    def run_in_thread(self):
+        thread = threading.Thread(target=self.run)
+        thread.start()
+        try:
+            while not self.started:
+                time.sleep(1e-3)
+            yield
+        finally:
+            self.should_exit = True
+            thread.join()
+
+
+
+def main():
+    #directory of this file
+    current_directory = os.path.dirname(os.path.abspath(__file__))
+    file_name = "config.json"
+    file_path = f"{current_directory}/{file_name}"
+    
+    if os.path.exists(file_path):
+        os.remove(file_path)
+        print("file has been removed")
+
+    
+    config = uvicorn.Config("start:app", host="0.0.0.0")
+    server = Server(config=config)
+
+    with server.run_in_thread():
+        print("Server is running...")
+
+        while not os.path.exists(file_path):
+            time.sleep(1)
+    
+    print("Server has been stopped.")        
+    
+    config_data = None
+            
+    with open(file_path, "r") as config_file:
+        config_data = json.load(config_file)
+        
+    #WRITE CONFIG FILE INTO LOCATION SO THAT IT MATCHES THE 'DEFAULT' CONFIGURATION (when it runs with docker)
+
+    directory_path = f'{config_data["tracking_args"]["config_dir"]}'
+    file_name = f'participant_{config_data["device_args"]["idx"]}.json'
+
+    try:
+        if not os.path.exists(directory_path): 
+            os.makedirs(directory_path)
+            print(f"Created directory: {directory_path}")
+        
+        # Write the file
+        with open(f'{directory_path}/{file_name}', "w") as config_file:
+            print(f"Writing to file: {directory_path}/{file_name}")
+            json.dump(config_data, config_file, indent=2)
+            print("JSON file written successfully")
+    except Exception as e:
+        print("Failed to write data to file")
+        print(e)
+        return JSONResponse(content={"error": "Failed to write data"}, status_code=500)
+    
+    run_subprocess(directory_path, file_name)
+
+
+
+if __name__ == "__main__":
+    main()
+```
+
+the process can now be started with `python3 nebula/physical/start.py`
+
+There was an issue that the configurations for the log_dir and config_dir started with a '/' so we would need permissions
+to create a new directory (e.g. `/nebula`) at root. However, there were some permission issues so now it creates directory
+realtive. 
+
+--> Actually, can still use absolute but need to start from root (aka in my case Desktop/NEBULA/...)
+
+
+
 ### Frontend
 
 In order to run Nebula on Rasberry Pis we need to be able to select the option to run Nebula on physical devices. 

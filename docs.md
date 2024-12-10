@@ -388,9 +388,6 @@ document.getElementById("participant-modal-save").addEventListener("click", func
 With these two changes, we can now select Nebula to run on physical devices and manually configure the IP and Port of
 the devices.
 
-ToDo:
--> When selecting the scenario it always skips back to process -> not good.
-
 ### Backend
 
 When Nebula is started `main` calls `Controller.start` which performs various set up steps, including calling the 

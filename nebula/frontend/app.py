@@ -16,47 +16,8 @@ from dotenv import load_dotenv
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
 
+logging.basicConfig(level=logging.INFO)
 
-class Settings:
-    port: int = os.environ.get("NEBULA_FRONTEND_PORT", 6060)
-    production: bool = os.environ.get("NEBULA_PRODUCTION", "False") == "True"
-    gpu_available: bool = os.environ.get("NEBULA_GPU_AVAILABLE", "False") == "True"
-    advanced_analytics: bool = os.environ.get("NEBULA_ADVANCED_ANALYTICS", "False") == "True"
-    host_platform: str = os.environ.get("NEBULA_HOST_PLATFORM", "unix")
-    log_dir: str = os.environ.get("NEBULA_LOGS_DIR")
-    config_dir: str = os.environ.get("NEBULA_CONFIG_DIR")
-    cert_dir: str = os.environ.get("NEBULA_CERTS_DIR")
-    root_host_path: str = os.environ.get("NEBULA_ROOT_HOST")
-    config_frontend_dir: str = os.environ.get("NEBULA_CONFIG_FRONTEND_DIR", "config")
-    env_file: str = os.environ.get("NEBULA_ENV_PATH", ".env")
-    statistics_port: int = os.environ.get("NEBULA_STATISTICS_PORT", 8080)
-    PERMANENT_SESSION_LIFETIME: datetime.timedelta = datetime.timedelta(minutes=60)
-    templates_dir: str = "templates"
-    server_log: str = os.environ.get("NEBULA_SERVER_LOG", "/nebula/app/logs/server.log")
-
-
-settings = Settings()
-
-logging.basicConfig(
-    level=logging.INFO,
-    format="[%(asctime)s] [%(levelname)s] %(message)s",
-    handlers=[
-        logging.StreamHandler(),
-        logging.FileHandler(settings.server_log, mode="w"),
-    ],
-)
-
-uvicorn_loggers = ["uvicorn", "uvicorn.error", "uvicorn.access"]
-for logger_name in uvicorn_loggers:
-    logger = logging.getLogger(logger_name)
-    logger.propagate = False  # Prevent duplicate logs
-    handler = logging.FileHandler(settings.server_log, mode="a")
-    handler.setFormatter(logging.Formatter("[%(asctime)s] [%(name)s] [%(levelname)s] %(message)s"))
-    logger.addHandler(handler)
-
-if os.path.exists(settings.env_file):
-    logging.info(f"Loading environment variables from {settings.env_file}")
-    load_dotenv(settings.env_file, override=True)
 
 from ansi2html import Ansi2HTMLConverter
 from fastapi import (
@@ -67,6 +28,7 @@ from fastapi import (
     HTTPException,
     Request,
     Response,
+    UploadFile,
     WebSocket,
     WebSocketDisconnect,
     status,
@@ -110,6 +72,51 @@ from nebula.frontend.database import (
     verify_hash_algorithm,
 )
 from nebula.frontend.utils import Utils
+
+
+class Settings:
+    port: int = os.environ.get("NEBULA_FRONTEND_PORT", 6060)
+    production: bool = os.environ.get("NEBULA_PRODUCTION", "False") == "True"
+    gpu_available: bool = os.environ.get("NEBULA_GPU_AVAILABLE", "False") == "True"
+    advanced_analytics: bool = os.environ.get("NEBULA_ADVANCED_ANALYTICS", "False") == "True"
+    host_platform: str = os.environ.get("NEBULA_HOST_PLATFORM", "unix")
+    log_dir: str = os.environ.get("NEBULA_LOGS_DIR")
+    config_dir: str = os.environ.get("NEBULA_CONFIG_DIR")
+    cert_dir: str = os.environ.get("NEBULA_CERTS_DIR")
+    root_host_path: str = os.environ.get("NEBULA_ROOT_HOST")
+    config_frontend_dir: str = os.environ.get("NEBULA_CONFIG_FRONTEND_DIR", "config")
+    env_file: str = os.environ.get("NEBULA_ENV_PATH", ".env")
+    statistics_port: int = os.environ.get("NEBULA_STATISTICS_PORT", 8080)
+    logging.info(f"STATISTICS PORT: {statistics_port}")
+    secret_key: str = os.environ.get("SECRET_KEY", os.urandom(24).hex())
+    PERMANENT_SESSION_LIFETIME: datetime.timedelta = datetime.timedelta(minutes=60)
+    templates_dir: str = "templates"
+    server_log: str = os.environ.get("NEBULA_SERVER_LOG", "/nebula/app/logs/server.log")
+
+
+settings = Settings()
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="[%(asctime)s] [%(levelname)s] %(message)s",
+    handlers=[
+        logging.StreamHandler(),
+        logging.FileHandler(settings.server_log, mode="w"),
+    ],
+)
+
+uvicorn_loggers = ["uvicorn", "uvicorn.error", "uvicorn.access"]
+for logger_name in uvicorn_loggers:
+    logger = logging.getLogger(logger_name)
+    logger.propagate = False  # Prevent duplicate logs
+    handler = logging.FileHandler(settings.server_log, mode="a")
+    handler.setFormatter(logging.Formatter("[%(asctime)s] [%(name)s] [%(levelname)s] %(message)s"))
+    logger.addHandler(handler)
+
+if os.path.exists(settings.env_file):
+    logging.info(f"Loading environment variables from {settings.env_file}")
+    load_dotenv(settings.env_file, override=True)
+
 
 logging.info(f"🚀  Starting Nebula Frontend on port {settings.port}")
 
@@ -1212,6 +1219,26 @@ async def nebula_dashboard_deployment_run(
     logging.info(f"Running deployment with {len(data)} scenarios")
     return RedirectResponse(url="/nebula/dashboard", status_code=303)
     # return Response(content="Success", status_code=200)
+
+
+@app.get("/test")
+async def test():
+    return {"message": "Hello World!"}
+
+
+@app.post("/nebula/controller/upload-event-files")
+async def upload_event_files(files: list[UploadFile]):
+    # location needs to be /nebula/app/logs/'name_of_scenario'/metrics/participant_x'
+    for file in files:
+        path = file.filename
+        filename = path.split("/")[-1]
+        abs_location = f"{'/'.join(path.split('/')[:-1])}/"
+        rel_location = f"../../../{abs_location}"
+        os.makedirs(rel_location, exist_ok=True)
+        with open(f"{rel_location}{filename}", "wb") as f:
+            content = await file.read()
+            f.write(content)
+    return Response(content="Success", status_code=200)
 
 
 if __name__ == "__main__":

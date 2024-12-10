@@ -12,6 +12,7 @@ import time
 from datetime import datetime
 
 import docker
+import requests
 import tensorboard_reducer as tbr
 
 from nebula.addons.blockchain.blockchain_deployer import BlockchainDeployer
@@ -23,6 +24,92 @@ from nebula.frontend.utils import Utils
 
 # Definition of a scenario
 class Scenario:
+    """
+    A class to represent a scenario.
+
+    Attributes:
+    scenario_title : str
+        Title of the scenario.
+    scenario_description : str
+        Description of the scenario.
+    deployment : str
+        Type of deployment (e.g., 'docker', 'process', 'physical').
+    federation : str
+        Type of federation.
+    topology : str
+        Network topology.
+    nodes : dict
+        Dictionary of nodes.
+    nodes_graph : dict
+        Graph representation of nodes.
+    n_nodes : int
+        Number of nodes.
+    matrix : list
+        Matrix representation of the network.
+    dataset : str
+        Dataset used in the scenario.
+    iid : bool
+        Indicator if the dataset is IID.
+    partition_selection : str
+        Method of partition selection.
+    partition_parameter : float
+        Parameter for partition selection.
+    model : str
+        Model used in the scenario.
+    agg_algorithm : str
+        Aggregation algorithm.
+    rounds : int
+        Number of rounds.
+    logginglevel : str
+        Logging level.
+    accelerator : str
+        Accelerator used.
+    network_subnet : str
+        Network subnet.
+    network_gateway : str
+        Network gateway.
+    epochs : int
+        Number of epochs.
+    attacks : str
+        Type of attacks.
+    poisoned_node_percent : float
+        Percentage of poisoned nodes.
+    poisoned_sample_percent : float
+        Percentage of poisoned samples.
+    poisoned_noise_percent : float
+        Percentage of poisoned noise.
+    with_reputation : bool
+        Indicator if reputation is used.
+    is_dynamic_topology : bool
+        Indicator if topology is dynamic.
+    is_dynamic_aggregation : bool
+        Indicator if aggregation is dynamic.
+    target_aggregation : str
+        Target aggregation method.
+    random_geo : bool
+        Indicator if random geo is used.
+    latitude : float
+        Latitude for mobility.
+    longitude : float
+        Longitude for mobility.
+    mobility : bool
+        Indicator if mobility is used.
+    mobility_type : str
+        Type of mobility.
+    radius_federation : float
+        Radius of federation.
+    scheme_mobility : str
+        Scheme of mobility.
+    round_frequency : int
+        Frequency of rounds.
+    mobile_participants_percent : float
+        Percentage of mobile participants.
+    additional_participants : list
+        List of additional participants.
+    schema_additional_participants : str
+        Schema for additional participants.
+    """
+
     def __init__(
         self,
         scenario_title,
@@ -250,8 +337,11 @@ class ScenarioManagement:
         # Assign the controller endpoint
         if self.scenario.deployment == "docker":
             self.controller = "nebula-frontend"
-        else:
+        elif self.scenario.deployment == "process":
             self.controller = f"127.0.0.1:{os.environ.get('NEBULA_FRONTEND_PORT')}"
+        else:
+            # ToDo: This needs to be adjusted when running with rasberry pis -> somehow dynamicall get the right ip address of the controller (this device)
+            self.controller = "192.168.134.129:6060"
 
         self.topologymanager = None
         self.env_path = None
@@ -321,6 +411,13 @@ class ScenarioManagement:
             os.chmod(participant_file, 0o777)
             with open(participant_file) as f:
                 participant_config = json.load(f)
+
+            # Todo: Frontend needs to be adjusted so that if we set ip and port of a node -> this gets adjusted in
+            # nodes to not just nodes_graph
+            # ADJUST CONFIG IN PARTICIPANTS CONFIG FILE SO THAT THE CONFIGURATION MATCHES (until now the default
+            # has been set
+            participant_config["scenario_args"]["deployment"] = self.scenario.deployment
+            participant_config["scenario_args"]["controller"] = self.controller
 
             participant_config["network_args"]["ip"] = node_config["ip"]
             participant_config["network_args"]["port"] = int(node_config["port"])
@@ -565,6 +662,7 @@ class ScenarioManagement:
             logging.info(
                 f"Virtualization mode is disabled for scenario '{self.scenario_name}' with {self.n_nodes} nodes. Waiting for nodes to start manually..."
             )
+            self.start_physical_nodes()
 
     def create_topology(self, matrix=None):
         import numpy as np
@@ -627,6 +725,51 @@ class ScenarioManagement:
 
         topologymanager.add_nodes(nodes_ip_port)
         return topologymanager
+
+    def start_physical_nodes(self):
+        logging.info("Starting physical nodes...")
+        logging.info(f"env path: {self.env_path}")
+
+        # Generate the Docker Compose file dynamically
+        services = ""
+        self.config.participants.sort(key=lambda x: x["device_args"]["idx"])
+        for node in self.config.participants:
+            idx = node["device_args"]["idx"]
+            path = f"/nebula/app/config/{self.scenario_name}/participant_{idx}.json"
+            logging.info(f"Starting node {idx} with configuration {path}")
+            logging.info("Node {} is listening on ip {}".format(idx, node["network_args"]["ip"]))
+
+        # Include additional config to the participants
+        # This whole thing is not usable (i think)
+        for idx, node in enumerate(self.config.participants):
+            # node["tracking_args"]["log_dir"] = "/nebula/app/logs"
+            # node["tracking_args"]["config_dir"] = f"/nebula/app/config/{self.scenario_name}"
+            node["scenario_args"]["controller"] = self.controller
+            # ToDo: Those security args -> do they need to be sent/generated by nodes themself?
+            # node["security_args"]["certfile"] = f"/nebula/app/certs/participant_{node['device_args']['idx']}_cert.pem"
+            # node["security_args"]["keyfile"] = f"/nebula/app/certs/participant_{node['device_args']['idx']}_key.pem"
+            # node["security_args"]["cafile"] = f"/nebula/app/certs/ca_cert.pem"
+
+            # Write the config file in config directory
+            # with open(f"{self.config_dir}/participant_{node['device_args']['idx']}.json", "w") as f:
+            #    json.dump(node, f, indent=4)
+
+        # Change log and config directory in dockers to /nebula/app, and change controller endpoint
+        for idx, node in enumerate(self.config.participants):
+            ip = node["network_args"]["ip"]
+            port = node["network_args"]["port"]
+
+            with open(f"{self.config_dir}/participant_{idx}.json") as f:
+                node_json_config = json.load(f)
+
+            url = f"http://{ip}:{port}/start"
+            print(url)
+
+            # if ip=="192.168.204.89":
+            logging.info(f"SENDING INFO TO OTHER DEVICE TO ENDPOINT: {url}")
+            response = requests.post(url, json=node_json_config)
+            logging.info(f"Response from node {idx}: ", response.json)
+            logging.info("\n")
 
     def start_blockchain(self):
         BlockchainDeployer(

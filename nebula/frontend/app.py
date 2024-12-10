@@ -47,7 +47,7 @@ from nebula.frontend.database import (
     remove_note,
 )
 
-from fastapi import FastAPI, Request, Depends, HTTPException, status, Form, Response, WebSocket, WebSocketDisconnect, BackgroundTasks
+from fastapi import FastAPI, Request, Depends, HTTPException, status, Form, Response, WebSocket, WebSocketDisconnect, BackgroundTasks, File, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse, FileResponse, PlainTextResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
@@ -69,6 +69,7 @@ class Settings:
     root_host_path: str = os.environ.get("NEBULA_ROOT_HOST")
     config_frontend_dir: str = os.environ.get("FEDELLAR_CONFIG_FRONTEND_DIR", "config")
     statistics_port: int = os.environ.get("NEBULA_STATISTICS_PORT", 8080)
+    logging.info(f"STATISTICS PORT: {statistics_port}")
     secret_key: str = os.environ.get("SECRET_KEY", os.urandom(24).hex())
     PERMANENT_SESSION_LIFETIME: datetime.timedelta = datetime.timedelta(minutes=60)
     templates_dir: str = "templates"
@@ -1148,6 +1149,21 @@ async def nebula_dashboard_deployment_run(request: Request, background_tasks: Ba
 @app.get("/test")
 async def test():
     return {"message": "Hello World!"}
+
+@app.post("/nebula/controller/upload-event-files")
+async def upload_event_files(files: list[UploadFile]):
+    #location needs to be /nebula/app/logs/'name_of_scenario'/metrics/participant_x'
+    for file in files:
+        path = file.filename
+        filename = path.split("/")[-1]
+        abs_location = f"{'/'.join(path.split('/')[:-1])}/"
+        rel_location = f"../../../{abs_location}"
+        os.makedirs(rel_location, exist_ok=True)
+        with open(f"{rel_location}{filename}", "wb") as f:
+            content = await file.read()
+            f.write(content)
+    return Response(content="Success", status_code=200)
+
 
 
 if __name__ == "__main__":

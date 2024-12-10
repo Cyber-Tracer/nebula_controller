@@ -32,7 +32,7 @@ class Scenario:
     scenario_description : str
         Description of the scenario.
     deployment : str
-        Type of deployment (e.g., 'docker', 'process').
+        Type of deployment (e.g., 'docker', 'process', 'physical').
     federation : str
         Type of federation.
     topology : str
@@ -295,8 +295,8 @@ class ScenarioManagement:
             self.controller = f"127.0.0.1:{os.environ.get('NEBULA_FRONTEND_PORT')}"
         else:
             #ToDo: This needs to be adjusted when running with rasberry pis -> somehow dynamicall get the right ip address of the controller (this device)
-            self.controller = "192.168.204.177:6060"
-            
+            self.controller = "192.168.134.177:6060"
+
         self.topologymanager = None
         self.env_path = None
         self.use_blockchain = self.scenario.agg_algorithm == "BlockchainReputation"
@@ -365,6 +365,11 @@ class ScenarioManagement:
 
             #Todo: Frontend needs to be adjusted so that if we set ip and port of a node -> this gets adjusted in
             # nodes to not just nodes_graph
+            #ADJUST CONFIG IN PARTICIPANTS CONFIG FILE SO THAT THE CONFIGURATION MATCHES (until now the default
+            #has been set
+            participant_config["scenario_args"]["deployment"] = self.scenario.deployment
+            participant_config["scenario_args"]["controller"] = self.controller
+
             participant_config["network_args"]["ip"] = node_config["ip"]
             participant_config["network_args"]["port"] = int(node_config["port"])
             participant_config["device_args"]["idx"] = node_config["id"]
@@ -684,11 +689,11 @@ class ScenarioManagement:
             url = f"http://{ip}:{port}/start"
             print(url)
 
-            if ip=="192.168.204.29":
-                logging.info(f"SENDING INFO TO OTHER DEVICE TO ENDPOINT: {url}")
-                response = requests.post(url, json=node_json_config)
-                logging.info(f"Response from node {idx}: ", response.json)
-                logging.info("\n")
+            #if ip=="192.168.204.89":
+            logging.info(f"SENDING INFO TO OTHER DEVICE TO ENDPOINT: {url}")
+            response = requests.post(url, json=node_json_config)
+            logging.info(f"Response from node {idx}: ", response.json)
+            logging.info("\n")
 
 
 

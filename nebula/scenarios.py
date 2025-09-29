@@ -343,10 +343,10 @@ class ScenarioManagement:
             self.controller = f"127.0.0.1:{os.environ.get('NEBULA_FRONTEND_PORT')}"
         else:
             # ToDo: This needs to be adjusted when running with rasberry pis -> somehow dynamicall get the right ip address of the controller (this device)
-            if self.self_ip:
-                self.controller = str(self.self_ip)+":6060"
-            else:
-                self.controller = "192.168.88.219:6060"
+            # if self.self_ip:
+            #     self.controller = str(self.self_ip)+":6060"
+            # else:
+            self.controller = "192.168.88.219:6060"
 
         self.topologymanager = None
         self.env_path = None

@@ -1042,6 +1042,8 @@
                 data["deployment"] = "process"
             } else if (document.getElementById("docker-radio").checked) {
                 data["deployment"] = "docker"
+            } else if (document.getElementById("physical-devices-radio").checked) {
+                data["deployment"] = "physical"     
             } else {
                 data["deployment"] = "physical"
             }
@@ -1115,6 +1117,8 @@
                     document.getElementById("process-radio").checked = true;
                 } else if (data["deployment"] == "docker") {
                     document.getElementById("docker-radio").checked = true;
+                } else if (data["deployment"] == "physical") {
+                    document.getElementById("physical-devices-radio").checked = true;     
                 } else {
                     document.getElementById("process-radio").checked = true;
                 }

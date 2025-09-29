@@ -430,7 +430,7 @@ class ScenarioManagement:
             participant_config["network_args"]["port"] = int(node_config["port"])
             participant_config["device_args"]["idx"] = node_config["id"]
             participant_config["device_args"]["start"] = node_config["start"]
-            participant_config["device_args"]["ip_start"] = ip_start
+            participant_config["network_args"]["ip_start"] = ip_start
             participant_config["device_args"]["role"] = node_config["role"]
             participant_config["device_args"]["proxy"] = node_config["proxy"]
             participant_config["device_args"]["malicious"] = node_config["malicious"]

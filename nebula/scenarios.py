@@ -396,6 +396,13 @@ class ScenarioManagement:
         else:
             self.scenario.nodes = self.scenario.mobility_assign(self.scenario.nodes, 0)
 
+        ip_start = "192.168.88.221"
+        for node in self.scenario.nodes:
+            node_config = self.scenario.nodes[node]
+            is_start = node_config["start"]
+            if is_start:
+                ip_start = node_config["ip"]
+                      
         # Save node settings
         for node in self.scenario.nodes:
             node_config = self.scenario.nodes[node]
@@ -423,6 +430,7 @@ class ScenarioManagement:
             participant_config["network_args"]["port"] = int(node_config["port"])
             participant_config["device_args"]["idx"] = node_config["id"]
             participant_config["device_args"]["start"] = node_config["start"]
+            participant_config["device_args"]["ip_start"] = ip_start
             participant_config["device_args"]["role"] = node_config["role"]
             participant_config["device_args"]["proxy"] = node_config["proxy"]
             participant_config["device_args"]["malicious"] = node_config["malicious"]

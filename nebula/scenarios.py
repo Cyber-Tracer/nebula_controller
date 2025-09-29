@@ -10,7 +10,7 @@ import sys
 import textwrap
 import time
 from datetime import datetime
-
+import socket
 import docker
 import requests
 import tensorboard_reducer as tbr
@@ -334,6 +334,8 @@ class ScenarioManagement:
         self.advanced_analytics = os.environ.get("NEBULA_ADVANCED_ANALYTICS", "False") == "True"
         self.config = Config(entity="scenarioManagement")
 
+        self.self_ip = self.get_local_ip()
+
         # Assign the controller endpoint
         if self.scenario.deployment == "docker":
             self.controller = "nebula-frontend"
@@ -341,7 +343,10 @@ class ScenarioManagement:
             self.controller = f"127.0.0.1:{os.environ.get('NEBULA_FRONTEND_PORT')}"
         else:
             # ToDo: This needs to be adjusted when running with rasberry pis -> somehow dynamicall get the right ip address of the controller (this device)
-            self.controller = "192.168.134.129:6060"
+            if self.self_ip:
+                self.controller = str(self.self_ip)+":6060"
+            else:
+                self.controller = "192.168.88.219:6060"
 
         self.topologymanager = None
         self.env_path = None
@@ -464,6 +469,16 @@ class ScenarioManagement:
             with open(participant_file, "w") as f:
                 json.dump(participant_config, f, sort_keys=False, indent=2)
 
+    def get_local_ip(self):
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            s.connect(("8.8.8.8", 80))
+            ip = s.getsockname()[0]
+        finally:
+            s.close()
+        return ip
+
+    
     @staticmethod
     def stop_blockchain():
         if sys.platform == "win32":

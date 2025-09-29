@@ -2801,10 +2801,10 @@
                 if (document.getElementById("process-radio").checked) {
                     nodes[i].ip = "127.0.0.1";
                 } else {
-                    nodes[i].ip = ip_split[0] + "." + ip_split[1] + "." + ip_split[2] + "." + (ip_last + i + 2);
+                    nodes[i].ip = ip_split[0] + "." + ip_split[1] + "." + ip_split[2] + "." + (ip_last + i + 200);
                 }
                 // Port starts from 45001 and increases by 1
-                nodes[i].port = (45001 + i).toString();
+                nodes[i].port = (8000).toString();
             }
             gData.nodes = nodes;
 
